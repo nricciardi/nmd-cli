@@ -5,7 +5,7 @@ pub mod builder_configuration;
 use std::{borrow::Borrow, collections::HashSet, path::PathBuf, sync::{Arc, RwLock}, time::Instant};
 use builder_configuration::BuilderConfiguration;
 use builder_error::BuilderError;
-use nmd_core::{assembler::{assembler_configuration::AssemblerConfiguration, html_assembler::HtmlAssembler, Assembler}, codex::{codex_configuration::CodexConfiguration, Codex}, compiler::{compilation_configuration::{compilation_configuration_overlay::CompilationConfigurationOverLay, CompilationConfiguration}, compilation_error::CompilationError, Compiler}, constants::{DOSSIER_CONFIGURATION_JSON_FILE_NAME, DOSSIER_CONFIGURATION_YAML_FILE_NAME}, dossier::{dossier_configuration::DossierConfiguration, Document, Dossier}, dumpable::{DumpConfiguration, Dumpable}, loader::{loader_configuration::LoaderConfiguration, Loader}, output_format::OutputFormat, theme::Theme, utility::file_utility};
+use nmd_core::{assembler::{html_assembler::{html_assembler_configuration::HtmlAssemblerConfiguration, HtmlAssembler}, Assembler}, compiler::{compilation_configuration::compilation_configuration_overlay::CompilationConfigurationOverLay, Compiler}, constants::{DOSSIER_CONFIGURATION_JSON_FILE_NAME, DOSSIER_CONFIGURATION_YAML_FILE_NAME}, dossier::{dossier_configuration::DossierConfiguration, Document, Dossier}, dumpable::{DumpConfiguration, Dumpable}, loader::{loader_configuration::LoaderConfiguration, Loader}, output_format::OutputFormat, theme::Theme, utility::file_utility};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tokio::{sync::RwLock as TokioRwLock, task::JoinSet};
 use crate::preview::{html_preview::PREVIEW_URL, Preview};
@@ -85,31 +85,34 @@ impl Builder {
 
         log::info!("dossier compiled in {} ms", compilation_start.elapsed().as_millis());
 
-        let mut assembler_configuration = AssemblerConfiguration::from(dossier.configuration().clone());
-
-        if let Some(t) = builder_configuration.theme().as_ref() {
-        
-            assembler_configuration.set_theme(t.clone());
-        }
-
-        if let Some(there_is_preview) = builder_configuration.preview() {
-            if there_is_preview {
-                if let Some(watch_mode) = builder_configuration.watching() {
-                    if watch_mode {
-
-                        assembler_configuration.external_styles_mut().push(include_str!("preview/check_preview_updates.js").to_string())
-
-                    }
-                }
-            }
-        }
-        
         log::info!("assembling...");
 
         let assembly_time = Instant::now();
 
         let mut artifact = match builder_configuration.format() {
-            OutputFormat::Html => HtmlAssembler::assemble_dossier(&dossier, &assembler_configuration)?,
+            OutputFormat::Html => {
+                let mut assembler_configuration = HtmlAssemblerConfiguration::from(dossier.configuration().clone());
+
+                if let Some(t) = builder_configuration.theme().as_ref() {
+                
+                    assembler_configuration.set_theme(t.clone());
+                }
+        
+                if let Some(there_is_preview) = builder_configuration.preview() {
+                    if there_is_preview {
+                        if let Some(watch_mode) = builder_configuration.watching() {
+                            if watch_mode {
+        
+                                assembler_configuration.external_scripts_mut()
+                                                            .push(include_str!("preview/check_preview_updates.js").to_string())
+        
+                            }
+                        }
+                    }
+                }
+
+                HtmlAssembler::assemble_dossier(&dossier, &assembler_configuration)?
+            },
         };
 
         log::info!("end to assembly (assembly time {} ms)", assembly_time.elapsed().as_millis());
@@ -146,6 +149,7 @@ impl Builder {
 
         let builder_configuration = Arc::new(TokioRwLock::new(builder_configuration.clone()));
         
+
         let mut watcher = tokio::spawn(async move {
 
             NmdWatcher::new(
@@ -462,16 +466,6 @@ impl Builder {
 
         log::info!("document compiled in {} ms", compilation_start.elapsed().as_millis());
 
-        let mut assembler_configuration = AssemblerConfiguration::default();
-
-        assembler_configuration.set_theme(builder_configuration.theme().clone().unwrap_or(Theme::default()));
-
-        if let Some(there_is_preview) = builder_configuration.preview() {
-            if there_is_preview {
-                assembler_configuration.external_styles_mut().push(include_str!("preview/check_preview_updates.js").to_string())
-            }
-        }
-
         log::info!("assembling...");
 
         let output_location = builder_configuration.output_location().clone();
@@ -479,7 +473,20 @@ impl Builder {
         let assembly_time = Instant::now();
 
         let mut artifact = match builder_configuration.format() {
-            OutputFormat::Html => HtmlAssembler::assemble_document_standalone(&document, &output_location.file_stem().unwrap().to_string_lossy().to_string(), None, None, &assembler_configuration)?,
+            OutputFormat::Html => {
+
+                let mut assembler_configuration = HtmlAssemblerConfiguration::default();
+
+                assembler_configuration.set_theme(builder_configuration.theme().clone().unwrap_or(Theme::default()));
+
+                if let Some(there_is_preview) = builder_configuration.preview() {
+                    if there_is_preview {
+                        assembler_configuration.external_styles_mut().push(include_str!("preview/check_preview_updates.js").to_string())
+                    }
+                }
+
+                HtmlAssembler::assemble_document_standalone(&document, &output_location.file_stem().unwrap().to_string_lossy().to_string(), None, None, &assembler_configuration)?
+            },
         };
 
         log::info!("end to assembly (assembly time {} ms)", assembly_time.elapsed().as_millis());

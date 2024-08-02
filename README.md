@@ -22,7 +22,7 @@ nmd generate dossier -p dossier/input/path -f -w
 
 nmd dossier -p dossier/input/path add -d new-document.nmd
 
-nmd compile -i input/path
+nmd build -i input/path
 ```
 
 ### Installation
@@ -88,7 +88,7 @@ You can compile a dossier or a single file through `compile` command.
 The only mandatory option is the input path. It can be a path to a directory (dossier) or a file.
 
 ```shell
-nmd compile -i input/path
+nmd build -i input/path
 ```
 
 `compile` command has a lot of options. You could specify the output format using `-f <format>` (e.g. `html`, which is the default), the output path with `-o <output-path>` or the theme using `-t <theme>`. The available themes are:

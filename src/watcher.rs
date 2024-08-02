@@ -1,9 +1,9 @@
-use std::{collections::HashSet, future::Future, path::PathBuf, pin::Pin, sync::mpsc::{channel, Receiver, RecvError, Sender}, time::SystemTime};
+use std::{collections::HashSet, future::Future, path::PathBuf, pin::Pin, sync::mpsc::RecvError, time::SystemTime};
 
 use getset::{Getters, Setters};
 use notify::{Error, Event, RecursiveMode, Watcher};
 use thiserror::Error;
-use tokio::task::JoinError;
+use tokio::{sync::mpsc::Receiver, task::{JoinError, JoinHandle}};
 
 use super::preview::PreviewError;
 
@@ -25,6 +25,9 @@ pub enum WatcherError {
 
     #[error(transparent)]
     JoinError(#[from] JoinError),
+
+    #[error("send error")]
+    SendError,
 }
 
 pub type CheckIfElaborateFn<'a> = Box<dyn FnMut(Event) -> Pin<Box<dyn Future<Output = Result<bool, WatcherError>> + Send>> + Send + Sync + 'a>;
@@ -34,8 +37,6 @@ pub type ElaborateFn<'a> = Box<dyn Fn(HashSet<PathBuf>) -> Pin<Box<dyn Future<Ou
 
 #[derive(Getters, Setters)]
 pub struct NmdWatcher<'a> {
-
-    tx: Sender<Result<Event, Error>>,
 
     rx: Receiver<Result<Event, Error>>,
 
@@ -54,29 +55,33 @@ impl<'a> NmdWatcher<'a> {
 
     pub async fn new(min_elapsed_time_between_events_in_secs: u64, input_path: &PathBuf, on_start_fn: OnStartFn<'a>, check_if_elaborate_skipping_timeout_fn: CheckIfElaborateFn<'a>, check_if_elaborate_fn: CheckIfElaborateFn<'a>, elaborate_fn: ElaborateFn<'a>) -> Result<Self, WatcherError> {
         
-        let (tx, rx) = channel();
-
-        let cloned_tx = tx.clone();
-        let mut watcher = tokio::spawn(async {
-            notify::recommended_watcher(move |res| {
-
-                println!("test");
-    
-                cloned_tx.send(res).unwrap_or_else(|val| {
-                    log::error!("error occurs during watching: {}", val);
-                });
-            })
-        }).await??;
+        let (tx, rx) = tokio::sync::mpsc::channel(4096);
 
         let input_path = input_path.clone();
 
-        tokio::spawn(async move {
-            watcher.watch(&input_path, RecursiveMode::Recursive)
-        }).await??;
+        let _: JoinHandle<Result<(), WatcherError>> = tokio::spawn(async move {
+            let (notify_tx, notify_rx) = std::sync::mpsc::channel();
+
+            let mut watcher = notify::recommended_watcher(move |res| {
+                    
+                notify_tx.send(res).unwrap_or_else(|val| {
+                    log::error!("error occurs during watching: {}", val);
+                });
+            })?;
+
+            watcher.watch(&input_path, RecursiveMode::Recursive)?;
+
+            while let Ok(event) = notify_rx.recv() {
+                if let Err(_) = tx.send(event).await {
+                    return Err(WatcherError::SendError)
+                }
+            }
+
+            Ok(())
+        });
 
         let s = Self {
             min_elapsed_time_between_events_in_secs,
-            tx,
             rx,
             on_start_fn,
             check_if_elaborate_fn,
@@ -96,59 +101,51 @@ impl<'a> NmdWatcher<'a> {
         (self.on_start_fn)().await?;
 
         loop {
-            match self.rx.recv() {
 
-                Ok(res) => {   
+            if let Ok(recv_res) = self.rx.try_recv() {
 
-                    println!("test");                 
+                match recv_res {
+                    Ok(event) => {
+                        log::debug!("new event from watcher: {:?}", event);
+                        log::debug!("change detected on file(s): {:?}", event.paths);
 
-                    match res {
+                        event.clone().paths.iter().for_each(|path| {
+                            paths_change_detection_from_last_elaboration.insert(path.clone());
+                        });
 
-                        Ok(event) => {
+                        if (self.check_if_elaborate_skipping_timeout_fn)(event.clone()).await? {
 
-                            log::info!("new event from watcher: {:?}", event);
-                            log::info!("change detected on file(s): {:?}", event.paths);
+                            (self.elaborate_fn)(paths_change_detection_from_last_elaboration.clone()).await?;
 
-                            event.clone().paths.iter().for_each(|path| {
-                                paths_change_detection_from_last_elaboration.insert(path.clone());
-                            });
-
-                            if (self.check_if_elaborate_skipping_timeout_fn)(event.clone()).await? {
-
-                                (self.elaborate_fn)(paths_change_detection_from_last_elaboration.clone()).await?;
-
-                                continue;
-                            }
-                            
-                            let event_time = SystemTime::now();
-
-                            let elapsed_time = event_time.duration_since(last_event_time).unwrap();
-
-                            if elapsed_time.as_secs() < self.min_elapsed_time_between_events_in_secs {
-                                log::info!("change detected, but minimum elapsed time not satisfied ({}/{} s)", elapsed_time.as_secs(), self.min_elapsed_time_between_events_in_secs);
-
-                                continue;
-                            }
-
-                            if (self.check_if_elaborate_fn)(event).await? {
-                                (self.elaborate_fn)(paths_change_detection_from_last_elaboration.clone()).await?;
-
-                                last_event_time = event_time;
-                                
-                                continue;
-                            }
-                            
-                        },
-                        Err(err) => {
-                            log::error!("watch error: {:?}", err);
-                            return Err(WatcherError::WatcherError(err))
+                            continue;
                         }
-                    }
-                },
-                Err(err) => {
-                    log::error!("watch channel error: {:?}", err);
-                    return Err(WatcherError::ChannelError(err))
-                },
+                        
+                        let event_time = SystemTime::now();
+
+                        let elapsed_time = event_time.duration_since(last_event_time).unwrap();
+
+                        if elapsed_time.as_secs() < self.min_elapsed_time_between_events_in_secs {
+                            log::info!("change detected, but minimum elapsed time not satisfied ({}/{} s)", elapsed_time.as_secs(), self.min_elapsed_time_between_events_in_secs);
+
+                            continue;
+                        }
+
+                        if (self.check_if_elaborate_fn)(event).await? {
+                            (self.elaborate_fn)(paths_change_detection_from_last_elaboration.clone()).await?;
+
+                            last_event_time = event_time;
+                            
+                            continue;
+                        }
+                    },
+                    Err(err) => {
+                        log::error!("error: {}", err.to_string());
+                    },
+                }
+
+            } else {
+                
+                tokio::task::yield_now().await;
             }
         }
     }
