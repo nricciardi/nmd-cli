@@ -1052,7 +1052,9 @@ dependencies = [
 
 [[package]]
 name = "nmd-core"
-version = "0.37.4"
+version = "0.38.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ea5963ac3e46690ebe78cda330ddd01da694cc54a9be53bb406208834477e07"
 dependencies = [
  "anyhow",
  "base64",
