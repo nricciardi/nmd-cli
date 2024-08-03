@@ -618,7 +618,7 @@ impl NmdCli {
 
                         async move {
 
-                            Builder::load_and_compile_document(builder_configuration.read().await.deref()).await
+                            Builder::build_document(builder_configuration.read().await.deref()).await
                         }
                     });
 

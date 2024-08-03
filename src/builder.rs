@@ -133,8 +133,6 @@ impl Builder {
 
         artifact.dump(&dump_configuration)?;
 
-        log::info!("end to compile dossier (compile time: {} ms)", compilation_start.elapsed().as_millis());
-
         Ok(())
     }
 
@@ -430,11 +428,11 @@ impl Builder {
 
     /// Standard file compilation based on `BuilderConfiguration`
     /// It loads, compiles and dumps a document
-    pub async fn load_and_compile_document(builder_configuration: &BuilderConfiguration) -> Result<(), BuilderError> {
+    pub async fn build_document(builder_configuration: &BuilderConfiguration) -> Result<(), BuilderError> {
 
-        log::info!("start to compile dossier");
+        log::info!("start to build dossier");
 
-        let compilation_start = Instant::now();
+        let build_start = Instant::now();
 
         log::debug!("compilation configuration (this will override dossier compilation configuration):\n\n{:#?}\n", builder_configuration);
 
@@ -442,7 +440,7 @@ impl Builder {
 
         let mut document: Document = Loader::load_document_from_path(builder_configuration.input_location(), &codex, &LoaderConfiguration::default())?;
 
-        log::info!("document loaded in {} ms", compilation_start.elapsed().as_millis());
+        log::info!("document loaded in {} ms", build_start.elapsed().as_millis());
 
         let compilation_configuration = builder_configuration.generate_compilation_configuration();
 
@@ -464,7 +462,7 @@ impl Builder {
 
         Compiler::compile_document(&mut document, builder_configuration.format(), &builder_configuration.codex(), &compilation_configuration, compilation_configuration_overlay)?;
 
-        log::info!("document compiled in {} ms", compilation_start.elapsed().as_millis());
+        log::info!("document compiled in {} ms", build_start.elapsed().as_millis());
 
         log::info!("assembling...");
 
@@ -495,7 +493,7 @@ impl Builder {
 
         artifact.dump(&dump_configuration)?;
 
-        log::info!("end to compile document (compile time: {} ms)", compilation_start.elapsed().as_millis());
+        log::info!("document build in {} ms", build_start.elapsed().as_millis());
 
         Ok(())
     }
