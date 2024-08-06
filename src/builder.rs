@@ -433,15 +433,12 @@ impl Builder {
     }
 
 
-    /// Standard file compilation based on `BuilderConfiguration`
-    /// It loads, compiles and dumps a document
-    pub async fn build_document(builder_configuration: &BuilderConfiguration) -> Result<(), BuilderError> {
+    /// Load document
+    pub async fn load_document(builder_configuration: &BuilderConfiguration) -> Result<Document, BuilderError> {
 
-        log::info!("start to build dossier");
+        log::info!("start to load dossier");
 
         let build_start = Instant::now();
-
-        log::debug!("compilation configuration (this will override dossier compilation configuration):\n\n{:#?}\n", builder_configuration);
 
         let codex = builder_configuration.codex();
 
@@ -455,6 +452,19 @@ impl Builder {
         }
 
         log::info!("document loaded in {} ms", build_start.elapsed().as_millis());
+
+        Ok(document)
+    }
+
+    /// Standard file compilation based on `BuilderConfiguration`
+    /// It loads, compiles and dumps a document
+    pub async fn build_document(builder_configuration: &BuilderConfiguration) -> Result<(), BuilderError> {
+
+        log::info!("start to build document");
+
+        let build_start = Instant::now();
+
+        let mut document = Self::load_document(builder_configuration).await?;        
 
         let compilation_configuration = builder_configuration.generate_compilation_configuration();
 

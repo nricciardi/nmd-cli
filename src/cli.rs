@@ -12,7 +12,7 @@ use tokio::sync::RwLock as TokioRwLock;
 use std::{path::PathBuf, str::FromStr};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use tokio::task::{JoinError, JoinHandle};
-use crate::builder::builder_configuration::{self, BuilderConfiguration};
+use crate::builder::builder_configuration::BuilderConfiguration;
 use crate::builder::builder_error::BuilderError;
 use crate::builder::Builder;
 use crate::constants::{MINIMUM_WATCHER_TIME, VERSION};
@@ -31,6 +31,9 @@ pub enum NmdCliError {
 
     #[error("bad command")]
     BadCommand,
+
+    #[error("unknown resource")]
+    UnknownResource,
 
     #[error(transparent)]
     BuilderError(#[from] BuilderError),
@@ -286,7 +289,6 @@ impl NmdCli {
                 .subcommand(
                     Command::new("dossier")
                     .about("Manage NMD dossier")
-                    .short_flag('d')
                     .subcommand_required(true)
                     .arg(
                         Arg::new("dossier-path")
@@ -323,25 +325,33 @@ impl NmdCli {
                             .action(ArgAction::SetTrue)
                         )
                     )
-                    .subcommand(
-                        Command::new("analyze")
-                        .about("Analyze dossier and print result (in json) to stdout")
-                        .short_flag('l')
-                        .arg(
-                            Arg::new("nuid")
-                            .long("nuid")
-                            .help("set nuid")
-                            .action(ArgAction::SetTrue)
-                        )
-                        .arg(
-                            Arg::new("pretty")
-                            .long("pretty")
-                            .help("pretty json")
-                            .action(ArgAction::SetTrue)
-                        )
+                )
+                .subcommand(
+                    Command::new("analyze")
+                    .about("Analyze NMD dossier or document")
+                    .subcommand_required(false)
+                    .arg(
+                        Arg::new("input-path")
+                            .short('i')
+                            .long("input")
+                            .help("insert input path")
+                            .action(ArgAction::Append)
+                            .default_value(".")
+                            .required(true)
+                    )
+                    .arg(
+                        Arg::new("nuid")
+                        .long("nuid")
+                        .help("set nuid")
+                        .action(ArgAction::SetTrue)
+                    )
+                    .arg(
+                        Arg::new("pretty")
+                        .long("pretty")
+                        .help("pretty json")
+                        .action(ArgAction::SetTrue)
                     )
                 );
-
         Self {
             cli
         }
@@ -365,6 +375,8 @@ impl NmdCli {
             Some(("generate", generate_matches)) => Self::handle_generate_command(&generate_matches).await,
 
             Some(("dossier", dossier_matches)) => Self::handle_dossier_command(&dossier_matches).await,
+
+            Some(("analyze", analyze_matches)) => Self::handle_analyze_command(&analyze_matches).await,
 
             _ => {
                 log::error!("bad command");
@@ -414,15 +426,6 @@ impl NmdCli {
         if let Some(input_path) = matches.get_one::<String>("input-path") {
                                         
             let input_path = PathBuf::from(input_path);
-
-            if input_path.is_dir() {
-
-                builder_configuration.set_resource_type(CompilableResourceType::Dossier);
-            
-            } else {
-
-                builder_configuration.set_resource_type(CompilableResourceType::File);
-            }
 
             builder_configuration.set_input_location(input_path);
         }
@@ -758,36 +761,74 @@ impl NmdCli {
                 Ok(())
             },
 
-            Some(("analyze", analyze_dossier_matches)) => {
-
-                let mut builder_configuration = BuilderConfiguration::default();
-
-                builder_configuration.set_input_location(dossier_path);
-
-                if analyze_dossier_matches.get_flag("nuid") {
-                    builder_configuration.set_nuid(Some(true));
-                }
-
-                let dossier = Builder::load_dossier(&builder_configuration).await?;
-
-                let json_dossier: String;
-                
-                if analyze_dossier_matches.get_flag("pretty") {
-
-                    json_dossier = serde_json::to_string_pretty(&dossier)?;
-
-                } else {
-
-                   json_dossier = serde_json::to_string(&dossier)?;
-                }
-
-                stdout().write_all(json_dossier.as_bytes())?;
-
-                Ok(())
-            },
-
             _ => unreachable!()
         }
+    }
+
+    async fn handle_analyze_command(matches: &ArgMatches) -> Result<(), NmdCliError> {
+        let mut builder_configuration = BuilderConfiguration::default();
+
+        builder_configuration.set_input_location(PathBuf::from(matches.get_one::<String>("input-path").unwrap()));
+
+        if matches.get_flag("nuid") {
+            builder_configuration.set_nuid(Some(true));
+        }
+
+        let json_output: String;
+        
+        if matches.get_flag("pretty") {
+
+            match builder_configuration.resource_type() {
+                CompilableResourceType::Dossier => {
+
+                    let dossier = Builder::load_dossier(&builder_configuration).await?;
+
+                    json_output = serde_json::to_string_pretty(&dossier)?;
+                },
+
+                CompilableResourceType::File => {
+                    let document = Builder::load_document(&builder_configuration).await?;
+
+                    json_output = serde_json::to_string_pretty(&document)?;
+                },
+
+
+                CompilableResourceType::Unknown => {
+                    log::error!("unknown resource");
+
+                    return Err(NmdCliError::UnknownResource)
+                },
+            }
+
+        } else {
+            
+            match builder_configuration.resource_type() {
+                CompilableResourceType::Dossier => {
+
+                    let dossier = Builder::load_dossier(&builder_configuration).await?;
+
+                    json_output = serde_json::to_string(&dossier)?;
+                },
+
+                CompilableResourceType::File => {
+                    
+                    let document = Builder::load_document(&builder_configuration).await?;
+
+                    json_output = serde_json::to_string(&document)?;
+                },
+
+
+                CompilableResourceType::Unknown => {
+                    log::error!("unknown resource");
+
+                    return Err(NmdCliError::UnknownResource)
+                },
+            }
+        }
+
+        stdout().write_all(json_output.as_bytes())?;
+
+        Ok(())
     }
 
 }

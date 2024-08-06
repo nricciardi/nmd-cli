@@ -10,7 +10,7 @@ pub struct BuilderConfiguration {
     #[getset(get = "pub", set = "pub")]
     format: OutputFormat,
 
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     input_location: PathBuf,
 
     #[getset(get = "pub", set = "pub")]
@@ -70,12 +70,30 @@ pub struct BuilderConfiguration {
 
 impl BuilderConfiguration {
     pub fn new(input_location: PathBuf, output_location: PathBuf) -> Self {
-        BuilderConfiguration {
-            input_location,
+
+        let mut builder_configuration = Self {
             output_location,
 
             ..Default::default()
+        };
+
+        builder_configuration.set_input_location(input_location);
+        
+        builder_configuration
+    }
+
+    /// Set input location and auto-set resource type
+    pub fn set_input_location(&mut self, input_location: PathBuf) {
+        if input_location.is_dir() {
+
+            self.resource_type = CompilableResourceType::Dossier;
+        
+        } else {
+
+            self.resource_type = CompilableResourceType::File;
         }
+
+        self.input_location = input_location;
     }
 
     pub fn codex(&self) -> Codex {
