@@ -5,7 +5,7 @@
 **New way to write in markdown**
 
 [![License](https://img.shields.io/badge/license-GPL3-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.1.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue.svg)](CHANGELOG.md)
 
 NMD stands for **New MarkDown**, or for friends, *Nicola MarkDown* (if Stephen Bourne can name a shell, why can't I name mine NMD?)
 
@@ -81,9 +81,9 @@ nmd dossier -p dossier/input/path reset [ -p ]
 
 `-p` reset flag to preserve documents list.
 
-#### Compile
+#### Build
 
-You can compile a dossier or a single file through `compile` command.
+You can build a dossier or a single file through `build` command.
 
 The only mandatory option is the input path. It can be a path to a directory (dossier) or a file.
 
@@ -115,6 +115,18 @@ Moreover, if you watch dossier files and compile them if something changes, you 
 In the end, if you are writing in NMD and you want a preview, you could compile with `-p` option. `-p` renders a preview in a web server on `127.0.0.1:1234` (`--preview-scraping-interval <interval>` to set client scraping interval in *milliseconds*).
 
 `--embed-local-image`, `--embed-remote-image`, `--strict-image-src-check` and `--embed-local-image` to manage images parsing.
+
+You can use `--nuid` to add *NUID*.
+
+#### Analyze
+
+You could want analyze a dossier or a document before build it. `analyze` command print on `stdout` the corresponding JSON.
+
+```shell
+nmd analyze -i input/path
+```
+
+You can use `--nuid` to add *NUID* or `--pretty` to print pretty formatted JSON.
 
 ## Develop
 
