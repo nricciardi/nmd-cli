@@ -210,6 +210,12 @@ impl NmdCli {
                                     .help("set strict image source check")
                                     .action(ArgAction::SetTrue)
                                 )
+                                .arg(
+                                    Arg::new("nuid")
+                                    .long("nuid")
+                                    .help("set nuid")
+                                    .action(ArgAction::SetTrue)
+                                )
                 )
                 .subcommand(
                     Command::new("generate")
@@ -518,6 +524,11 @@ impl NmdCli {
         // PARALLELIZATION
         if matches.get_flag("parallelization") {
             builder_configuration.set_parallelization(Some(true));
+        }
+
+        // NUID
+        if matches.get_flag("nuid") {
+            builder_configuration.set_nuid(Some(true));
         }
 
         // IMAGEs

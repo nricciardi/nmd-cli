@@ -5,7 +5,7 @@ pub mod builder_configuration;
 use std::{borrow::Borrow, collections::HashSet, path::PathBuf, sync::{Arc, RwLock}, time::Instant};
 use builder_configuration::BuilderConfiguration;
 use builder_error::BuilderError;
-use nmd_core::{assembler::{html_assembler::{html_assembler_configuration::HtmlAssemblerConfiguration, HtmlAssembler}, Assembler}, compiler::{compilation_configuration::compilation_configuration_overlay::CompilationConfigurationOverLay, Compiler}, constants::{DOSSIER_CONFIGURATION_JSON_FILE_NAME, DOSSIER_CONFIGURATION_YAML_FILE_NAME}, dossier::{dossier_configuration::DossierConfiguration, Document, Dossier}, dumpable::{DumpConfiguration, Dumpable}, loader::{loader_configuration::LoaderConfiguration, Loader}, output_format::OutputFormat, theme::Theme, utility::file_utility};
+use nmd_core::{assembler::{html_assembler::{html_assembler_configuration::HtmlAssemblerConfiguration, HtmlAssembler}, Assembler}, compiler::{compilation_configuration::compilation_configuration_overlay::CompilationConfigurationOverLay, Compiler}, constants::{DOSSIER_CONFIGURATION_JSON_FILE_NAME, DOSSIER_CONFIGURATION_YAML_FILE_NAME}, dossier::{dossier_configuration::DossierConfiguration, Document, Dossier}, dumpable::{DumpConfiguration, Dumpable}, loader::{loader_configuration::LoaderConfiguration, Loader}, output_format::OutputFormat, theme::Theme, utility::{file_utility, nmd_unique_identifier::assign_nuid_to_document_paragraphs}};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tokio::{sync::RwLock as TokioRwLock, task::JoinSet};
 use crate::preview::{html_preview::PREVIEW_URL, Preview};
@@ -25,7 +25,7 @@ impl Builder {
 
         let loading_start = Instant::now();
 
-        let dossier: Dossier;
+        let mut dossier: Dossier;
 
         if let Some(dstc) = builder_configuration.documents_subset_to_compile() {
 
@@ -34,6 +34,13 @@ impl Builder {
         } else {
 
             dossier = Loader::load_dossier_from_path_buf(builder_configuration.input_location(), &builder_configuration.codex(), &LoaderConfiguration::default())?;
+        }
+
+        if let Some(with_nuid) = builder_configuration.nuid() {
+            if with_nuid {
+                log::info!("assign nuid...");
+                dossier.documents_mut().iter_mut().for_each(|d| assign_nuid_to_document_paragraphs(d));
+            }
         }
 
         log::info!("dossier loaded in {} ms", loading_start.elapsed().as_millis());
@@ -439,6 +446,13 @@ impl Builder {
         let codex = builder_configuration.codex();
 
         let mut document: Document = Loader::load_document_from_path(builder_configuration.input_location(), &codex, &LoaderConfiguration::default())?;
+
+        if let Some(with_nuid) = builder_configuration.nuid() {
+            if with_nuid {
+                log::info!("assign nuid...");
+                assign_nuid_to_document_paragraphs(&mut document);
+            }
+        }
 
         log::info!("document loaded in {} ms", build_start.elapsed().as_millis());
 

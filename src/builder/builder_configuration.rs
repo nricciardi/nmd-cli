@@ -63,6 +63,9 @@ pub struct BuilderConfiguration {
 
     #[getset(get_copy = "pub", set = "pub")]
     watching: Option<bool>,
+
+    #[getset(get_copy = "pub", set = "pub")]
+    nuid: Option<bool>,
 }
 
 impl BuilderConfiguration {
@@ -245,6 +248,7 @@ impl Default for BuilderConfiguration {
             resource_type: CompilableResourceType::default(),
             preview: Some(false),
             watching: Some(false),
+            nuid: Some(false),
         }
     }
 }
