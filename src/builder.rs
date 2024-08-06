@@ -21,7 +21,7 @@ impl Builder {
     /// Load dossier from `BuilderConfiguration`
     pub async fn load_dossier(builder_configuration: &BuilderConfiguration) -> Result<Dossier, BuilderError> {
         
-        log::info!("start to load dossier");
+        log::info!("start to load dossier {:?}", builder_configuration.input_location());
 
         let loading_start = Instant::now();
 

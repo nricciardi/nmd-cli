@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::{stdout, Write};
 use std::num::ParseIntError;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -11,7 +12,7 @@ use tokio::sync::RwLock as TokioRwLock;
 use std::{path::PathBuf, str::FromStr};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use tokio::task::{JoinError, JoinHandle};
-use crate::builder::builder_configuration::BuilderConfiguration;
+use crate::builder::builder_configuration::{self, BuilderConfiguration};
 use crate::builder::builder_error::BuilderError;
 use crate::builder::Builder;
 use crate::constants::{MINIMUM_WATCHER_TIME, VERSION};
@@ -63,6 +64,12 @@ pub enum NmdCliError {
 
     #[error(transparent)]
     ParseIntError(#[from] ParseIntError),
+
+    #[error(transparent)]
+    JsonError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
 }
 
 
@@ -316,6 +323,23 @@ impl NmdCli {
                             .action(ArgAction::SetTrue)
                         )
                     )
+                    .subcommand(
+                        Command::new("analyze")
+                        .about("Analyze dossier and print result (in json) to stdout")
+                        .short_flag('l')
+                        .arg(
+                            Arg::new("nuid")
+                            .long("nuid")
+                            .help("set nuid")
+                            .action(ArgAction::SetTrue)
+                        )
+                        .arg(
+                            Arg::new("pretty")
+                            .long("pretty")
+                            .help("pretty json")
+                            .action(ArgAction::SetTrue)
+                        )
+                    )
                 );
 
         Self {
@@ -336,7 +360,7 @@ impl NmdCli {
 
         let result: Result<(), NmdCliError> = match matches.subcommand() {
 
-            Some(("build", compile_matches)) => Self::handle_compile_command(&compile_matches).await,
+            Some(("build", compile_matches)) => Self::handle_build_command(&compile_matches).await,
 
             Some(("generate", generate_matches)) => Self::handle_generate_command(&generate_matches).await,
 
@@ -365,7 +389,7 @@ impl NmdCli {
             .unwrap();
     }
 
-    async fn handle_compile_command(matches: &ArgMatches) -> Result<(), NmdCliError> {
+    async fn handle_build_command(matches: &ArgMatches) -> Result<(), NmdCliError> {
 
         let mut builder_configuration = BuilderConfiguration::default();
 
@@ -702,35 +726,22 @@ impl NmdCli {
 
     async fn handle_dossier_command(matches: &ArgMatches) -> Result<(), NmdCliError> {
 
-        let dossier_path: Option<PathBuf>;
-
-        if let Some(dp) = matches.get_one::<String>("dossier-path") {
-                    
-            dossier_path = Some(PathBuf::from(dp));
-        
-        } else {
-            
-            dossier_path = None;
-        }
-
+        let dossier_path = PathBuf::from(matches.get_one::<String>("dossier-path").unwrap());
+    
         match matches.subcommand() {
             Some(("add", add_dossier_matches)) => {
 
-                if let Some(dp) = dossier_path {
+                if let Some(document_names) = add_dossier_matches.get_many::<String>("document-name") {
                     
-                    if let Some(document_names) = add_dossier_matches.get_many::<String>("document-name") {
-                    
-                        let dossier_manager_configuration = DossierManagerConfiguration::new(dp);
+                    let dossier_manager_configuration = DossierManagerConfiguration::new(dossier_path);
 
-                        let dossier_manager = DossierManager::new(dossier_manager_configuration);
+                    let dossier_manager = DossierManager::new(dossier_manager_configuration);
 
-                        for file_name in document_names {
-                            dossier_manager.add_empty_document(&file_name)?;
-                        }
-
-                        return Ok(())
+                    for file_name in document_names {
+                        dossier_manager.add_empty_document(&file_name)?;
                     }
-                    
+
+                    return Ok(())
                 }
 
                 Err(NmdCliError::TooFewArguments("dossier path".to_string()))
@@ -738,20 +749,42 @@ impl NmdCli {
 
             Some(("reset", reset_dossier_matches)) => {
                 
-                if let Some(dp) = dossier_path {
+                let dossier_manager_configuration = DossierManagerConfiguration::new(dossier_path.clone());
 
-                    let dossier_manager_configuration = DossierManagerConfiguration::new(dp.clone());
+                let dossier_manager = DossierManager::new(dossier_manager_configuration);
+                
+                dossier_manager.reset_dossier_configuration(dossier_path, reset_dossier_matches.get_flag("preserve-documents"))?;
+                
+                Ok(())
+            },
 
-                    let dossier_manager = DossierManager::new(dossier_manager_configuration);
-                    
-                    dossier_manager.reset_dossier_configuration(dp, reset_dossier_matches.get_flag("preserve-documents"))?;
-                    
-                    return Ok(())
-                    
+            Some(("analyze", analyze_dossier_matches)) => {
+
+                let mut builder_configuration = BuilderConfiguration::default();
+
+                builder_configuration.set_input_location(dossier_path);
+
+                if analyze_dossier_matches.get_flag("nuid") {
+                    builder_configuration.set_nuid(Some(true));
                 }
 
-                Err(NmdCliError::TooFewArguments("dossier path".to_string()))
-            }
+                let dossier = Builder::load_dossier(&builder_configuration).await?;
+
+                let json_dossier: String;
+                
+                if analyze_dossier_matches.get_flag("pretty") {
+
+                    json_dossier = serde_json::to_string_pretty(&dossier)?;
+
+                } else {
+
+                   json_dossier = serde_json::to_string(&dossier)?;
+                }
+
+                stdout().write_all(json_dossier.as_bytes())?;
+
+                Ok(())
+            },
 
             _ => unreachable!()
         }
