@@ -1,6 +1,6 @@
 [package]
 name = "nmd"
-version = "1.1.0"
+version = "1.2.0"
 authors = ["Nicola Ricciardi"]
 edition = "2021"
 description = "Official NMD CLI and compiler"
@@ -35,8 +35,8 @@ url = "2.5.0"
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 chrono = "0.4.38"
-# nmd-core = "0.38.0"
-nmd-core = { path="../nmd-core" }
+nmd-core = "0.39.0"
+# nmd-core = { path="../nmd-core" }
 
 
 [profile.profiling]

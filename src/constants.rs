@@ -1,5 +1,5 @@
 
 /// NMD CLI version
-pub const VERSION: &str = "1.1.0";
+pub const VERSION: &str = "1.2.0";
 
 pub const MINIMUM_WATCHER_TIME: u64 = 5;
