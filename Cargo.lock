@@ -1066,8 +1066,6 @@ dependencies = [
 [[package]]
 name = "nmd-core"
 version = "0.39.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df2657ae3eb26eb7ff0f363ec99987070e6ffee579e1db3175645318439c904f"
 dependencies = [
  "ahash",
  "anyhow",
